@@ -8,7 +8,7 @@ import (
 
 var (
 	//保存池对象的map
-	pools = make(map[string]*connPool)
+	pools = make(map[string]*ConnPool)
 	//日志对象
 	log *onelog.Logger = nil
 )
@@ -20,7 +20,7 @@ func init() {
 }
 
 //ConnPool 连接池的接口，所有连接从这里获取
-type connPool struct {
+type ConnPool struct {
 	Name        string
 	connectUrl  string       //连接字符串
 	maxCount    uint8        //最大连接数，超过此数不再建立连接
@@ -31,12 +31,12 @@ type connPool struct {
 }
 
 //GetPool 得到默认的连接池对象，如果多个可使用命名对象
-func GetPool() *connPool {
+func GetPool() *ConnPool {
 	return pools[Default]
 }
 
 //GetPoolByName 得到默认的连接池对象，如果多个可使用命名对象
-func GetPoolByName(poolName string) (*connPool, error) {
+func GetPoolByName(poolName string) (*ConnPool, error) {
 	if pool, ok := pools[poolName]; ok {
 		return pool, nil
 	} else {
@@ -44,6 +44,6 @@ func GetPoolByName(poolName string) (*connPool, error) {
 	}
 }
 
-func NewPool(connectionUrl string, maxCount uint8, coreCount uint8) (*connPool, error) {
+func NewPool(connectionUrl string, maxCount uint8, coreCount uint8) (*ConnPool, error) {
 	return nil, errors.UnknownMistake("")
 }
