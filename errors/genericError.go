@@ -13,3 +13,24 @@ type NotUnderstand string
 func (e NotUnderstand) Error() string {
 	return "不能理解的值:" + string(e)
 }
+
+//IsFull 已满
+type IsFull string
+
+func (e IsFull) Error() string {
+	return string(e) + " 已满。无法再增加"
+}
+
+//UnableToConnect 无法连接服务器
+type UnableToConnect string
+
+func (e UnableToConnect) Error() string {
+	return "无法连接服务器，连接信息：" + string(e)
+}
+
+//UnknownMistake 未知错误
+type UnknownMistake string
+
+func (e UnknownMistake) Error() string {
+	return "未知错误。 " + string(e)
+}

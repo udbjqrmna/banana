@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/udbjqrmna/banana/object"
+	"github.com/udbjqrmna/banana/db"
 )
 
 func main() {
-	var us = object.User{}
-
+	var us = db.GetDBConnPool()
+	us.Db = "abc"
 	fmt.Println(us)
 }
