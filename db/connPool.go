@@ -14,6 +14,7 @@ var (
 )
 
 func init() {
+	//实例化日志对象
 	if log = onelog.GetLog("DbLog"); log == nil {
 		log = onelog.New(&onelog.Stdout{Writer: os.Stdout}, onelog.TraceLevel, &onelog.JsonPattern{}).AddRuntime(&onelog.Caller{})
 	}
@@ -21,7 +22,7 @@ func init() {
 
 //ConnPool 连接池的接口，所有连接从这里获取
 type ConnPool struct {
-	Name        string
+	Name        string       //连接池名称
 	connectUrl  string       //连接字符串
 	maxCount    uint8        //最大连接数，超过此数不再建立连接
 	coreCount   uint8        //核心连接数，最小保持此连接数
@@ -44,6 +45,10 @@ func GetPoolByName(poolName string) (*ConnPool, error) {
 	}
 }
 
-func NewPool(connectionUrl string, maxCount uint8, coreCount uint8) (*ConnPool, error) {
+func NewPool(name, connectionUrl string, maxCount uint8, coreCount uint8) (*ConnPool, error) {
+	if _, ok := pools[name]; ok {
+		return nil, errors.AlreadyExisting(name)
+	}
+
 	return nil, errors.UnknownMistake("")
 }

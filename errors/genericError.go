@@ -34,3 +34,10 @@ type UnknownMistake string
 func (e UnknownMistake) Error() string {
 	return "未知错误。 " + string(e)
 }
+
+//AlreadyExisting 已经存在
+type AlreadyExisting string
+
+func (e AlreadyExisting) Error() string {
+	return "错误，指定的定义已经存在: " + string(e)
+}
