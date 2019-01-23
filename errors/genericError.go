@@ -41,3 +41,10 @@ type AlreadyExisting string
 func (e AlreadyExisting) Error() string {
 	return "错误，指定的定义已经存在: " + string(e)
 }
+
+//MisTake 一个错误
+type MisTake string
+
+func (e MisTake) Error() string {
+	return "出现了一个错误：" + string(e)
+}
