@@ -10,7 +10,8 @@ const (
 	//EmptyString 一个空字符串的值，不是nil
 	EmptyString string = ""
 	//定义一个默认的名称
-	Default string = "default"
+	Default = "default"
+	LogName = "DBLog"
 )
 
 //定义此包的全局对象
@@ -28,8 +29,9 @@ func Log() *onelog.Logger {
 }
 
 func init() {
+	onelog.TimeFormat = "15:04:05.000000"
 	//实例化日志对象
-	if log = onelog.GetLog("DbLog"); log == nil {
-		log = onelog.New(&onelog.Stdout{Writer: os.Stdout}, onelog.TraceLevel, &onelog.JsonPattern{}).AddRuntime(&onelog.Caller{})
+	if log = onelog.GetLog(LogName); log == nil {
+		log = onelog.New(&onelog.Stdout{Writer: os.Stdout}, onelog.TraceLevel, &onelog.JsonPattern{}).AddRuntime(&onelog.CoroutineID{})
 	}
 }

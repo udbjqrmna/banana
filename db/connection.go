@@ -7,8 +7,16 @@ type HandleConnected = func(c Connection) error
 type Connection interface {
 	//创建一个新的连接
 	New(connectionUrl string, h HandleConnected) (Connection, error)
+	//返回当前连接的连接字符串
 	GetConnectUrl() string
-	//Query(sql string, h HandleTableResult) error
+	//此连接使用完之后返回操作，在这里进行一些清理工作
+	StopUse()
+	//此连接被使用前必须调用此方法。
+	StartUse()
+	//返回当前连接是否正在被使用,true:正在被使用
+	Busy() bool
+	//关闭连接
+	Close()
 }
 
 //HandleTableResult
