@@ -17,8 +17,12 @@ var (
 )
 
 const (
-	netProtocol = "tcp" //使用的网络协议
-	defaultBuf  = 4096  //接收缓冲区默认大小
+	url         = "url"      //连接时使用的连接对象的名称
+	netProtocol = "tcp"      //使用的网络协议
+	password    = "password" //以下为连接参数使用的名称
+	user        = "user"
+
+	defaultBuf = 4096 //接收缓冲区默认大小
 
 	//连接命令使用的一些常量
 	connClose = 255 //连接关闭的命令值

@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"github.com/udbjqrmna/banana/db/postgresql/pgproto3"
+	"github.com/udbjqrmna/banana/db/postgresql/protocol3"
 	"io"
 	"net"
 	"os"
@@ -9,6 +10,63 @@ import (
 	"testing"
 	"time"
 )
+
+func TestPostgresConn(t *testing.T) {
+	conn, err := NewConnection(`{"url":"127.0.0.1:5432","user":"testpasswd","database":"test2","password":"654321"}`)
+	if err != nil {
+		log.Error().Error(err).Msg("出现错误")
+	} else {
+		log.Trace().Msgf("成功开启连接。%v", conn)
+	}
+
+	for {
+		select {
+		case <-time.After(1 * time.Second):
+			if !conn.IsRunning() {
+				log.Info().String("cause", conn.Error()).Msg("连接停止运行。")
+				return
+			}
+		}
+	}
+}
+
+func TestConnDbNotExists(t *testing.T) {
+	startupMsg := pgproto3.StartupMessage{
+		ProtocolVersion: pgproto3.ProtocolVersionNumber,
+		Parameters:      make(map[string]string),
+	}
+
+	startupMsg.Parameters["user"] = "testpasswd"
+	startupMsg.Parameters["database"] = "postgres2"
+	startupMsg.Parameters["replication"] = "false"
+
+	conn, err := net.Dial("tcp", "127.0.0.1:5432")
+	if err != nil {
+		log.Error().Error(err).Msg("连接出现错误。")
+	} else {
+		var startupMsg = startupMsg.Encode(nil)
+		log.Trace().Bytes("Value", startupMsg).Msg("正常连接上了")
+		conn.Write(startupMsg)
+	}
+
+	if _, err := conn.Write(protocol3.EncodePassword("654321")); err != nil {
+		log.Error().Error(err).Msg("发送消息出现错误。")
+	}
+
+	buf := make([]byte, 4096)
+
+	for {
+		cnt, err := conn.Read(buf)
+		if err != nil {
+			log.Trace().Msgf("Fail to read data, %s\n", err)
+			break
+		}
+
+		log.Trace().Bytes("Value", buf[0:cnt]).Msgf("收到消息：%s", buf[0:cnt])
+	}
+
+	time.Sleep(10 * time.Second)
+}
 
 func TestConn(t *testing.T) {
 	startupMsg := pgproto3.StartupMessage{
@@ -31,13 +89,13 @@ func TestConn(t *testing.T) {
 
 	buf := make([]byte, 4096)
 	//sql := pgproto3.Query{String: "begin",}
-	//conn.Write(sql.Encode(nil))
+	//pgConn.Write(sql.Encode(nil))
 	//sql = pgproto3.Query{String: "select * from test limit 1",}
-	//conn.Write(sql.Encode(nil))
+	//pgConn.Write(sql.Encode(nil))
 	//sql = pgproto3.Query{String: "insert into test(a, b, c) values(1,2,3);",}
-	//conn.Write(sql.Encode(nil))
+	//pgConn.Write(sql.Encode(nil))
 	//sql = pgproto3.Query{String: "commit",}
-	//conn.Write(sql.Encode(nil))
+	//pgConn.Write(sql.Encode(nil))
 	for {
 		cnt, err := conn.Read(buf)
 		if err != nil {

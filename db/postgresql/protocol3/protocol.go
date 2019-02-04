@@ -1,47 +1,48 @@
-package postgresql
+package protocol3
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	logD "github.com/udbjqrmna/banana/db/log"
+)
+
+var log = logD.Log()
 
 type Message interface {
 	//将消息转成本对象的值
-	Decode(data []byte) error
+	Decode(data []byte)
 	//Encode 将赋值好的对象转成协议理解的byte值。
 	Encode() []byte
 }
 
-//抽象结构，此结构目的为后续代码提供一个抽象的实现。
-type AbsMessage struct {
+//前后端都有的消息直接实现这个抽象结构
+type bothMessage struct {
 }
 
-func (*AbsMessage) Decode(data []byte) error {
+func (*bothMessage) Decode(data []byte) {
 	log.Warn().Msg("此对象未实现此方法")
-	return nil
+	return
 }
 
-func (*AbsMessage) Encode() []byte {
+func (*bothMessage) Encode() []byte {
 	log.Warn().Msg("此对象未实现此方法")
 	return nil
 }
 
 //前端向后端发送的消息
-type FrontMessage struct {
-	AbsMessage
-	buf []byte
+type frontMessage struct {
+	bothMessage
 }
 
 //后端向前端发送的消息
-type BackMessage struct {
-	AbsMessage
+type backMessage struct {
+	bothMessage
 }
 
 //BothMessage 前后端都有的消息。
 type BothMessage struct {
-	AbsMessage
+	bothMessage
 }
-
-const (
-	AuthenticationKey = 'R'
-)
 
 func AppendUint16(buf []byte, n uint16) []byte {
 	wp := len(buf)
@@ -72,10 +73,29 @@ func AppendInt32(buf []byte, n int32) []byte {
 	return AppendUint32(buf, uint32(n))
 }
 
+func AppendInt(buf []byte, n int) []byte {
+	return AppendUint32(buf, uint32(n))
+}
+
 func AppendInt64(buf []byte, n int64) []byte {
 	return AppendUint64(buf, uint64(n))
 }
 
 func SetInt32(buf []byte, n int32) {
 	binary.BigEndian.PutUint32(buf, uint32(n))
+}
+
+func SetInt(buf []byte, n int) {
+	binary.BigEndian.PutUint32(buf, uint32(n))
+}
+
+//此方法得到返回消息里的内容。
+//同时返回内容和已经取完值的0所在位置
+func takeContent(buf []byte, prefix []byte) (string, int) {
+	ind := bytes.Index(buf, prefix)
+	if ind == -1 {
+		return "", -1
+	}
+	end := ind + len(prefix) + bytes.IndexByte(buf[ind+len(prefix):], 0)
+	return string(buf[ind+len(prefix) : end]), end
 }

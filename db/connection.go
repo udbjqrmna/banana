@@ -17,6 +17,11 @@ type Connection interface {
 	Close()
 	//启动连接，如果已经连接，此方法将重新连接
 	StartLink() error
+	//返回当前连接是否正在运行当中。正常应该返回true.可通过Error()方法得到异常值
+	//如果一个连接正在运行当中，就可以正常接收信息
+	IsRunning() bool
+
+	Error() string
 
 	////启动一个事务，当前启动过事务无法再次启动事务
 	//BegingTran()

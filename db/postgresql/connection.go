@@ -1,8 +1,10 @@
 package postgresql
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/udbjqrmna/banana/db"
+	"github.com/udbjqrmna/banana/db/postgresql/protocol3"
 	"io"
 	"net"
 	"time"
@@ -11,8 +13,7 @@ import (
 const (
 	inited        byte = 0x0  //对象构建完成，未进行任何动作
 	tryConnection byte = 0x1  //正在尝试连接服务器当中
-	connError     byte = 0xa  //连接出现无法继续的错误
-	connected     byte = 0x10 //连接已经完成
+	connected     byte = 0x10 //连接已经完成,还未进行登录操作
 	isReady       byte = 0x20 //已经被使用,此状态可进行操作
 	querying      byte = 0x21 //sql语句请求正在发送，等待返回
 	returning     byte = 0x25 //查询返回中，下一个查询还不能启动
@@ -21,12 +22,10 @@ const (
 	tranReturning byte = 0x35 //事务中查询返回中，下一个查询还不能启动
 	copyIning     byte = 0x40 //执行copy方法从客户端向服务器，待整理
 	copyOuting    byte = 0x41 //执行copy方法从服务器向客户端，待整理
-	closing       byte = 0xA0 //连接正在关闭中。
+	closing       byte = 0xA0 //连接正在关闭中
 	closed        byte = 0xAF //连接已经被关闭
+	connError     byte = 0xB0 //连接出现无法继续的错误
 	unknownError  byte = 0xFF //连接已经被关闭
-	//以下为连接参数使用的名称
-	password = "password"
-	user     = "user"
 )
 
 /*
@@ -40,8 +39,8 @@ type Connection struct {
 	url      string
 	connPara map[string]string //连接的一些参数，如连接地址，账号密码等等。
 	status   byte
-
-	conn net.Conn
+	errMsg   string
+	pgConn   net.Conn
 
 	request    chan []byte
 	response   chan []byte
@@ -54,10 +53,19 @@ func (c *Connection) GetConnectUrl() string {
 
 //创建一个连接的方法，此方法保证操作的哪一种类的数据库
 func NewConnection(connectionUrl string) (db.Connection, error) {
-	//TODO 创建一个连接的方法
+	para := make(map[string]string)
+	if err := json.Unmarshal([]byte(connectionUrl), &para); err != nil {
+		log.Error().Error(err).Msg("出现异常")
+		return nil, err
+	}
+
 	conn := &Connection{
-		url:    connectionUrl,
-		status: inited,
+		url:        connectionUrl,
+		connPara:   para,
+		status:     inited,
+		request:    make(chan []byte),
+		response:   make(chan []byte),
+		networkErr: make(chan error),
 	}
 
 	go conn.run()
@@ -97,10 +105,10 @@ func (c *Connection) run() {
 
 			//收到服务端发来消息的处理
 			case repMsg := <-c.response:
-				if repMsg != nil || len(repMsg) <= 0 {
+				if repMsg == nil || len(repMsg) <= 0 {
 					log.Warn().Msg("丢掉一个收到的服务端空消息。这个应该是不会出现的")
 				}
-				log.Trace().Msgf("收到服务端发来的消息。%v", repMsg)
+				//log.Trace().Msg("收到服务端发来的消息，调用处理")
 
 				if err := c.handleResponse(repMsg); err != nil {
 					log.Error().Error(err).Msg("收到一个无法操作的服务器消息。直接退出")
@@ -109,31 +117,44 @@ func (c *Connection) run() {
 
 			//收到网络异常时的处理
 			case err := <-c.networkErr:
-				log.Error().Error(err).Msgf("收到服务端接收的异常。")
-
-				if err == io.EOF {
-					c.status = inited
+				log.Error().Error(err).Msg("收到服务端接收的异常。")
+				if c.status != connError { //非断开网络的操作
+					if err == io.EOF { //判断是否网络联接断开，是的话再次进行连接
+						c.status = inited
+					}
 				}
 				//TODO 收到其他服务器异常时的处理
 			}
 		}
+		time.Sleep(connectionTryIdleTime * time.Second)
 	}
 
 exitRun:
+	log.Info().Msg("连接执行结束。")
 	c.destroy()
 }
 
 //接收服务器发来的消息的协程
 func (c *Connection) read() {
 	for c.status > connected && c.status < closing {
-		if err := c.conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err == nil {
+		if err := c.pgConn.SetReadDeadline(time.Now().Add(2 * time.Second)); err == nil {
 			var buf = make([]byte, defaultBuf)
-			if receiveCount, err := c.conn.Read(buf); err == nil {
+
+			if receiveCount, err := c.pgConn.Read(buf); err == nil {
+				//log.Trace().Bytes("revice", buf[:receiveCount]).Msg("收到的消息")
 				c.response <- buf[:receiveCount]
 			} else {
+				if netErr, ok := err.(net.Error); ok {
+					if netErr.Timeout() {
+						continue
+					}
+				}
+				//log.Trace().Error(err).Msg("这里发生了一个错误")
 				c.networkErr <- err
+				return
 			}
 		} else {
+			//log.Trace().Msg("这里发生了一个错误")
 			c.networkErr <- err
 			return
 		}
@@ -142,20 +163,31 @@ func (c *Connection) read() {
 
 //开始启动连接。
 func (c *Connection) StartLink() error {
+	//如果此值不为空，证明之前有连接过。重新连接前先关闭之前连接
+	if c.pgConn != nil {
+		_ = c.pgConn.Close()
+		c.pgConn = nil
+	}
+
 	c.status = tryConnection
 
 	// 开始连接，如果出现异常在过一段时间继续连接
 	for c.status == tryConnection {
-		conn, err := net.Dial(netProtocol, "127.0.0.1:5432")
+		conn, err := net.Dial(netProtocol, c.connPara[url])
 
 		if err != nil {
 			log.Warn().Error(err).Msg("连接出现异常。等待重试。")
 			time.Sleep(connectionTryIdleTime * time.Second)
 		} else {
-			log.Debug().Msg("与postgresql网络连接成功，等待回应登录。")
-			c.conn = conn
+			log.Debug().Msg("与postgresql网络连接成功,准备发送登录请求。")
+			c.pgConn = conn
 			c.status = connected
-			return nil
+
+			if err := c.sendMessage(protocol3.EncodeStartupMessage(c.connPara)); err == nil {
+				c.status = isReady
+			}
+
+			return err
 		}
 	}
 
@@ -169,7 +201,7 @@ func (c *Connection) destroy() {
 	}
 
 	c.status = closing
-	_ = c.conn.Close()
+	_ = c.pgConn.Close()
 	c.status = closed
 	//TODO　销毁的方法
 	//TODO 事务需要在销毁时处理掉，如果有未结束的事务，应该调用rollback()方法
@@ -177,25 +209,8 @@ func (c *Connection) destroy() {
 
 func (c *Connection) handleRequest(requestMsg []byte) error {
 	log.Trace().Bytes("request", requestMsg).Msg("开始处理客户端消息")
-	_, err := c.conn.Write(requestMsg)
 
-	return err
-}
-
-func (c *Connection) handleResponse(responseMsg []byte) error {
-	log.Trace().Bytes("rspMsg", responseMsg).Msg("开始处理服务端消息")
-
-	switch responseMsg[0] {
-	case AuthenticationKey:
-		if err := c.handleAuthentication(responseMsg[1:]); err == nil {
-			c.status = isReady
-		} else {
-			return err
-		}
-	}
-
-	//TODO 取第一个值，判断类型，并且返回对应的结果
-	return nil
+	return c.sendMessage(requestMsg)
 }
 
 /*
@@ -242,4 +257,18 @@ func (c *Connection) StartUse() error {
 	log.Debug().Msgf("开始使用连接,%p", c)
 	c.status = isReady
 	return nil
+}
+
+func (c *Connection) sendMessage(msg []byte) error {
+	log.Trace().Bytes("msg", msg).Msg("向服务器发送信息")
+	_, err := c.pgConn.Write(msg)
+	return err
+}
+
+func (c *Connection) Error() string {
+	return c.errMsg
+}
+
+func (c *Connection) IsRunning() bool {
+	return c.status < closed
 }
